@@ -1,47 +1,48 @@
 
 
 
-var gulp  = require('gulp'),
-    gutil = require('gulp-util');
-    jshint = require('gulp-jshint'); //makes styled reports in terminal
-    sass = require('gulp-sass');
-    sourcemaps = require('gulp-sourcemaps');
-    concat = require('gulp-concat');
-// create a default task and just log a message
-gulp.task('default', ['watch'], function() {
-    return gutil.log('Gulp is running!')
-});
-gulp.task('copyHtml', function () {
-    gulp.src('src/*.html').pipe(gulp.dest('public'));
-});
+var watchify = require('watchify');
+var browserify = require('browserify');
+var gulp = require('gulp');
+var source = require('vinyl-source-stream');
+var order = require('gulp-order');
+var concat = require('gulp-concat');
+var mainBowerFiles = require('main-bower-files');
+var uglify = require('gulp-uglify');
 
-//run jshint task when any file in src/javascript is changed
-gulp.task('watch', function () {
-    gulp.watch('src/javascript/**/*.js', ['jshint']);
-    gulp.watch('src/scss/**/*.scss', ['build-css']);
-});
 
-gulp.task('jshint', function () {
-    return gulp.src('src/javscript/**/*.js')
-        .pipe(jshint())
-        .pipe(jshint.reporter('jshint-stylish'));
-});
 
-gulp.task('build-css', function() {
-    //return gulp.src('src/scss/**/*.scss') //where to get scss
-    return gulp.src('src/scss/**/styles.scss')
-        .pipe(sourcemaps.init()) //Process the original sources
-            .pipe(sass()) //compile to css
-        .pipe(sourcemaps.write()) // Add the map to modified source. E.g., one can find, from which part of original code is a part of modified code
-        .pipe(gulp.dest('public/assets/stylesheets')); //where to put css
-});
+var b = watchify(browserify({entries: './src/javascript/app.js', extensions: ['.js'], debug: true}));
 
-gulp.task('build-js', function() {
-    return gulp.src('src/javascript/**/*.js')
-        .pipe(sourcemaps.init())
-            .pipe(concat('bundle.js'))
-            // only uglify if gulp is run with '--type production'
-            .pipe(gutil.env.type === 'production' ? uglify() : gutil.noop())
-        .pipe(sourcemaps.write())
-        .pipe(gulp.dest('public/assets/javascript'));
+function bundle() {
+    return b.transform('babelify', {presets: ['es2015', 'react']})
+        .transform({global: true}, 'uglifyify')
+        .bundle()
+        .pipe(source('bundle.js'))
+        .pipe(gulp.dest('./public/assets/javascript/'));
+}
+
+gulp.task('js', bundle);
+
+b.on('update', bundle);
+
+
+gulp.task('vendors', function() {
+    var vendorScripts = mainBowerFiles().filter(function (filename) {
+        return filename.match(/.+\._?js$/)
+    });
+    var vendorsOrder = [
+        'angular.js',
+        'angular-route.js',
+        'jquery.js',
+        'jquery-ui.js',
+        'lodash.js'
+    ];
+    return gulp.src(vendorScripts)
+        .pipe(order(vendorsOrder))
+        .pipe(concat('vendorJs.js'))
+        .pipe(uglify({
+            preserveComments: 'all'
+        }))
+        .pipe(gulp.dest('./public/assets/javascript/vendor'));
 });
